@@ -15,10 +15,11 @@ public class AuthController : ControllerBase
         _authService = authService;
     }
 
+    // ✅ REGISTER CORRECTO
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        await _authService.RegisterAsync(request.Email, request.Password);
+        await _authService.RegisterAsync(request);
 
         return StatusCode(201, new
         {
@@ -26,6 +27,7 @@ public class AuthController : ControllerBase
         });
     }
 
+    // ✅ LOGIN (ya estaba bien)
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {

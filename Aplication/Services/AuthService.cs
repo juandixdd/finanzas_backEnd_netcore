@@ -1,68 +1,83 @@
 ﻿using BaseBackend.Domain.Entities;
 using BaseBackend.Domain.Interfaces;
 using BaseBackend.Application.Common.Exceptions;
+using BaseBackend.Application.DTOs;
 
-namespace BaseBackend.Application.Services;
-
-public class AuthService
+namespace BaseBackend.Application.Services
 {
-    private readonly IUserRepository _userRepository;
-    private readonly IPasswordHasher _passwordHasher;
-    private readonly IJwtTokenGenerator _jwtTokenGenerator;
-
-    public AuthService(
-        IUserRepository userRepository,
-        IPasswordHasher passwordHasher,
-        IJwtTokenGenerator jwtTokenGenerator)
+    public class AuthService
     {
-        _userRepository = userRepository;
-        _passwordHasher = passwordHasher;
-        _jwtTokenGenerator = jwtTokenGenerator;
-    }
+        private readonly IUserRepository _userRepository;
+        private readonly IPasswordHasher _passwordHasher;
+        private readonly IJwtTokenGenerator _jwtTokenGenerator;
 
-    // ✅ REGISTRO
-    public async Task RegisterAsync(string email, string password)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-            throw new ValidationException("Email is required");
+        public AuthService(
+            IUserRepository userRepository,
+            IPasswordHasher passwordHasher,
+            IJwtTokenGenerator jwtTokenGenerator)
+        {
+            _userRepository = userRepository;
+            _passwordHasher = passwordHasher;
+            _jwtTokenGenerator = jwtTokenGenerator;
+        }
 
-        if (!email.Contains("@"))
-            throw new ValidationException("Invalid email format");
+        // ✅ REGISTRO CORRECTO
+        public async Task RegisterAsync(RegisterRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Email))
+                throw new ValidationException("Email is required");
 
-        if (string.IsNullOrWhiteSpace(password))
-            throw new ValidationException("Password is required");
+            if (!request.Email.Contains("@"))
+                throw new ValidationException("Invalid email format");
 
-        if (password.Length < 6)
-            throw new ValidationException("Password must be at least 6 characters");
+            if (string.IsNullOrWhiteSpace(request.Password))
+                throw new ValidationException("Password is required");
 
-        var existingUser = await _userRepository.GetByEmailAsync(email);
+            if (request.Password.Length < 6)
+                throw new ValidationException("Password must be at least 6 characters");
 
-        if (existingUser != null)
-            throw new ValidationException("User already exists");
+            if (string.IsNullOrWhiteSpace(request.Name))
+                throw new ValidationException("Name is required");
 
-        var passwordHash = _passwordHasher.Hash(password);
+            if (string.IsNullOrWhiteSpace(request.LastName))
+                throw new ValidationException("Last name is required");
 
-        var user = new User(email, passwordHash);
+            var existingUser = await _userRepository.GetByEmailAsync(request.Email);
 
-        await _userRepository.AddAsync(user);
-    }
+            if (existingUser != null)
+                throw new ValidationException("User already exists");
 
-    // ✅ LOGIN
-    public async Task<string> LoginAsync(string email, string password)
-    {
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-            throw new ValidationException("Email and password are required");
+            var passwordHash = _passwordHasher.Hash(request.Password);
 
-        var user = await _userRepository.GetByEmailAsync(email);
+            var user = new User(
+                email: request.Email,
+                passwordHash: passwordHash,
+                name: request.Name.Trim(),
+                lastName: request.LastName.Trim(),
+                currency: request.Currency,
+                birthDate: request.BirthDate
+            );
 
-        if (user == null)
-            throw new UnauthorizedException("Invalid email or password");
+            await _userRepository.AddAsync(user);
+        }
 
-        var isValid = _passwordHasher.Verify(password, user.PasswordHash);
+        // ✅ LOGIN (correcto)
+        public async Task<string> LoginAsync(string email, string password)
+        {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+                throw new ValidationException("Email and password are required");
 
-        if (!isValid)
-            throw new UnauthorizedException("Invalid email or password");
+            var user = await _userRepository.GetByEmailAsync(email);
 
-        return _jwtTokenGenerator.GenerateToken(user);
+            if (user == null)
+                throw new UnauthorizedException("Invalid email or password");
+
+            var isValid = _passwordHasher.Verify(password, user.PasswordHash);
+
+            if (!isValid)
+                throw new UnauthorizedException("Invalid email or password");
+
+            return _jwtTokenGenerator.GenerateToken(user);
+        }
     }
 }
