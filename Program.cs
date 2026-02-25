@@ -41,9 +41,11 @@ builder.Services.AddScoped<IProductRepository, ProductRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<CategoryService>();
 
 // ----------------------
 // 4. JWT AUTHENTICATION
