@@ -4,10 +4,13 @@ using BaseBackend.Infrastructure.Persistence;
 using BaseBackend.Infrastructure.Persistence.Repositories;
 using BaseBackend.Infrastructure.Security;
 using BaseBackend.Api.Middlewares;
+
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,20 +19,23 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. DATABASE (PostgreSQL)
 // ----------------------
 builder.Services.AddDbContext<AppDbContext>(options =>
+{
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")
-    )
-);
+    );
+});
 
 // ----------------------
-// 2. CORS (abierto por ahora)
+// 2. CORS
 // ----------------------
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("DefaultCors", policy =>
+    {
         policy.AllowAnyOrigin()
               .AllowAnyHeader()
-              .AllowAnyMethod());
+              .AllowAnyMethod();
+    });
 });
 
 // ----------------------
@@ -51,17 +57,12 @@ builder.Services.AddScoped<TransactionService>();
 // ----------------------
 // 4. JWT AUTHENTICATION
 // ----------------------
-var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrEmpty(jwtKey))
-    throw new Exception("JWT Key is missing in configuration");
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new Exception("JWT Key is missing in configuration");
 
 var key = Encoding.UTF8.GetBytes(jwtKey);
 
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
@@ -70,6 +71,7 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
+
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(key)
@@ -93,7 +95,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Enter JWT token"
+        Description = "Bearer {token}"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -115,7 +117,7 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 // ==============================
-// ✅ MIGRACIONES AUTOMÁTICAS
+// 6. MIGRACIONES AUTOMÁTICAS
 // ==============================
 using (var scope = app.Services.CreateScope())
 {
@@ -124,16 +126,19 @@ using (var scope = app.Services.CreateScope())
 }
 
 // ----------------------
-// 6. MIDDLEWARE PIPELINE
+// 7. MIDDLEWARE PIPELINE
 // ----------------------
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseHttpsRedirection();
 
 app.UseRouting();
 
-app.UseCors();
+app.UseCors("DefaultCors");
 
 app.UseMiddleware<ExceptionMiddleware>();
 
@@ -143,11 +148,12 @@ app.UseAuthorization();
 app.MapControllers();
 
 // ==============================
-// ✅ LOG DE ENDPOINTS
+// 8. LOG DE ENDPOINTS
 // ==============================
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     var endpointDataSource = app.Services.GetRequiredService<EndpointDataSource>();
+
     var endpoints = endpointDataSource.Endpoints
         .OfType<RouteEndpoint>()
         .Where(e => e.Metadata.GetMetadata<
@@ -165,6 +171,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     foreach (var group in grouped)
     {
         Console.WriteLine($"===== {group.Key.ToUpper()} =====");
+
         foreach (var endpoint in group)
         {
             var descriptor = endpoint.Metadata.GetMetadata<
@@ -176,8 +183,10 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
             Console.WriteLine($"{httpMethod.PadRight(6)} /{endpoint.RoutePattern.RawText}");
         }
+
         Console.WriteLine();
     }
+
     Console.ResetColor();
 });
 
