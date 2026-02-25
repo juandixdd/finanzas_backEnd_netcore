@@ -7,10 +7,15 @@ namespace BaseBackend.Api.Middlewares;
 public class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionMiddleware> _logger;
 
-    public ExceptionMiddleware(RequestDelegate next)
+    public ExceptionMiddleware(
+        RequestDelegate next,
+        ILogger<ExceptionMiddleware> logger
+    )
     {
         _next = next;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -21,6 +26,7 @@ public class ExceptionMiddleware
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, ex.Message);
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -33,6 +39,10 @@ public class ExceptionMiddleware
         switch (ex)
         {
             case ValidationException:
+                statusCode = HttpStatusCode.BadRequest;
+                break;
+
+            case ArgumentException:
                 statusCode = HttpStatusCode.BadRequest;
                 break;
 
@@ -60,6 +70,8 @@ public class ExceptionMiddleware
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
-        return context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        return context.Response.WriteAsync(
+            JsonSerializer.Serialize(response)
+        );
     }
 }

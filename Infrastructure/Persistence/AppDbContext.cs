@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Product> Products { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
+    public DbSet<Transaction>  Transactions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,7 +40,7 @@ public class AppDbContext : DbContext
                 .HasMaxLength(200);
 
             entity.Property(p => p.Price)
-                .HasColumnType("decimal(18,2)");
+                .HasPrecision(18, 2);
         });
     }
 }

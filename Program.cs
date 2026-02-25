@@ -1,8 +1,8 @@
 using BaseBackend.Application.Services;
 using BaseBackend.Domain.Interfaces;
 using BaseBackend.Infrastructure.Persistence;
-using BaseBackend.Infrastructure.Security;
 using BaseBackend.Infrastructure.Persistence.Repositories;
+using BaseBackend.Infrastructure.Security;
 using BaseBackend.Api.Middlewares;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -13,25 +13,23 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 // ----------------------
-// 1. DATABASE
+// 1. DATABASE (PostgreSQL)
 // ----------------------
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
+    options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")
     )
 );
 
 // ----------------------
-// 2. CORS (PERMITIR ANGULAR)
+// 2. CORS (abierto por ahora)
 // ----------------------
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAngularDev", policy =>
-    {
-        policy.WithOrigins("http://localhost:4200") // URL de tu frontend
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
+              .AllowAnyMethod());
 });
 
 // ----------------------
@@ -39,19 +37,23 @@ builder.Services.AddCors(options =>
 // ----------------------
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
+builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
-builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CategoryService>();
+builder.Services.AddScoped<TransactionService>();
 
 // ----------------------
 // 4. JWT AUTHENTICATION
 // ----------------------
 var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrEmpty(jwtKey)) throw new Exception("JWT Key is missing in configuration");
+if (string.IsNullOrEmpty(jwtKey))
+    throw new Exception("JWT Key is missing in configuration");
 
 var key = Encoding.UTF8.GetBytes(jwtKey);
 
@@ -124,16 +126,14 @@ using (var scope = app.Services.CreateScope())
 // ----------------------
 // 6. MIDDLEWARE PIPELINE
 // ----------------------
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
-// ✅ CORS debe ir ANTES de Authentication y Authorization
-app.UseCors("AllowAngularDev"); 
+app.UseRouting();
+
+app.UseCors();
 
 app.UseMiddleware<ExceptionMiddleware>();
 
@@ -143,18 +143,20 @@ app.UseAuthorization();
 app.MapControllers();
 
 // ==============================
-// ✅ LOG DE ENDPOINTS EN CONSOLA
+// ✅ LOG DE ENDPOINTS
 // ==============================
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     var endpointDataSource = app.Services.GetRequiredService<EndpointDataSource>();
     var endpoints = endpointDataSource.Endpoints
         .OfType<RouteEndpoint>()
-        .Where(e => e.Metadata.GetMetadata<Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor>() != null)
+        .Where(e => e.Metadata.GetMetadata<
+            Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor>() != null)
         .ToList();
 
     var grouped = endpoints
-        .GroupBy(e => e.Metadata.GetMetadata<Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor>()!.ControllerName)
+        .GroupBy(e => e.Metadata.GetMetadata<
+            Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor>()!.ControllerName)
         .OrderBy(g => g.Key);
 
     Console.ForegroundColor = ConsoleColor.Blue;
@@ -165,8 +167,11 @@ app.Lifetime.ApplicationStarted.Register(() =>
         Console.WriteLine($"===== {group.Key.ToUpper()} =====");
         foreach (var endpoint in group)
         {
-            var descriptor = endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor>();
-            var httpMethod = descriptor!.ActionConstraints?.OfType<Microsoft.AspNetCore.Mvc.ActionConstraints.HttpMethodActionConstraint>()
+            var descriptor = endpoint.Metadata.GetMetadata<
+                Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor>();
+
+            var httpMethod = descriptor!.ActionConstraints?
+                .OfType<Microsoft.AspNetCore.Mvc.ActionConstraints.HttpMethodActionConstraint>()
                 .FirstOrDefault()?.HttpMethods.FirstOrDefault() ?? "HTTP";
 
             Console.WriteLine($"{httpMethod.PadRight(6)} /{endpoint.RoutePattern.RawText}");
